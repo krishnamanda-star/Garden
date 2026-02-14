@@ -1,0 +1,641 @@
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { loadPlants, savePlants, isConfigured } from "./storage.js";
+
+const SECTIONS = ["Section A", "Section B", "Section C", "Section D"];
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const FULL_MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+const BLOOM_DATA = {
+  "Rose": { bloomMonths: [5,6,7,8,9], zone: "3-11", sun: "Full Sun", water: "Moderate", tip: "Prune in late winter. Deadhead spent blooms for continuous flowering." },
+  "Tulip": { bloomMonths: [3,4,5], zone: "3-8", sun: "Full Sun", water: "Moderate", tip: "Plant bulbs in fall, 6-8 inches deep. Let foliage die back naturally." },
+  "Lavender": { bloomMonths: [5,6,7,8], zone: "5-9", sun: "Full Sun", water: "Low", tip: "Thrives in well-drained soil. Prune after flowering to maintain shape." },
+  "Sunflower": { bloomMonths: [6,7,8,9], zone: "2-11", sun: "Full Sun", water: "Moderate", tip: "Direct sow after last frost. Stake tall varieties." },
+  "Daffodil": { bloomMonths: [2,3,4], zone: "3-9", sun: "Full/Partial Sun", water: "Moderate", tip: "Plant bulbs in fall. Naturalizes well — leave undisturbed." },
+  "Hydrangea": { bloomMonths: [5,6,7,8,9], zone: "3-9", sun: "Partial Sun", water: "High", tip: "Soil pH affects color: acidic = blue, alkaline = pink." },
+  "Peony": { bloomMonths: [4,5,6], zone: "3-8", sun: "Full Sun", water: "Moderate", tip: "Plant eyes 1-2 inches below soil. Support heavy blooms with rings." },
+  "Dahlia": { bloomMonths: [6,7,8,9,10], zone: "8-11", sun: "Full Sun", water: "Moderate", tip: "Start tubers indoors in spring. Pinch for bushier growth." },
+  "Marigold": { bloomMonths: [5,6,7,8,9,10], zone: "2-11", sun: "Full Sun", water: "Low", tip: "Great companion plant. Deadhead for continuous blooms." },
+  "Iris": { bloomMonths: [4,5,6], zone: "3-9", sun: "Full Sun", water: "Low", tip: "Plant rhizomes at soil surface. Divide every 3-4 years." },
+  "Chrysanthemum": { bloomMonths: [8,9,10,11], zone: "5-9", sun: "Full Sun", water: "Moderate", tip: "Pinch stems in early summer for bushier plants and more blooms." },
+  "Lily": { bloomMonths: [5,6,7,8], zone: "3-9", sun: "Full/Partial Sun", water: "Moderate", tip: "Plant bulbs 6 inches deep in well-drained soil. Mulch in winter." },
+  "Geranium": { bloomMonths: [4,5,6,7,8,9,10], zone: "10-11", sun: "Full Sun", water: "Moderate", tip: "Deadhead regularly. Overwinter indoors in cold climates." },
+  "Zinnia": { bloomMonths: [5,6,7,8,9,10], zone: "2-11", sun: "Full Sun", water: "Low", tip: "Direct sow after frost. Excellent cut flower — cutting encourages more blooms." },
+  "Orchid": { bloomMonths: [1,2,3,4,5,10,11,12], zone: "9-12", sun: "Indirect Light", water: "Low", tip: "Water weekly, let roots dry between. Bright indirect light is key." },
+  "Cherry Blossom": { bloomMonths: [3,4], zone: "5-8", sun: "Full Sun", water: "Moderate", tip: "Blooms last 1-2 weeks. Prune after flowering to shape." },
+  "Maple Tree": { bloomMonths: [3,4], zone: "3-9", sun: "Full/Partial Sun", water: "Moderate", tip: "Fall foliage peaks in October. Prune in late summer to avoid sap bleeding." },
+  "Japanese Maple": { bloomMonths: [4,5], zone: "5-9", sun: "Partial Sun", water: "Moderate", tip: "Protect from harsh afternoon sun. Beautiful fall color." },
+  "Oak Tree": { bloomMonths: [3,4,5], zone: "3-9", sun: "Full Sun", water: "Low", tip: "Slow-growing but long-lived. Acorns attract wildlife." },
+  "Wisteria": { bloomMonths: [4,5], zone: "5-9", sun: "Full Sun", water: "Moderate", tip: "Prune twice yearly — summer and winter. Can take years to first bloom." },
+  "Jasmine": { bloomMonths: [3,4,5,6,7,8], zone: "7-10", sun: "Full/Partial Sun", water: "Moderate", tip: "Fragrant evening bloomer. Train on trellises or arbors." },
+  "Camellia": { bloomMonths: [1,2,3,10,11,12], zone: "7-9", sun: "Partial Sun", water: "Moderate", tip: "Evergreen with winter blooms. Protect from morning sun in cold areas." },
+  "Azalea": { bloomMonths: [3,4,5], zone: "5-9", sun: "Partial Sun", water: "Moderate", tip: "Acidic soil preferred. Shallow roots — mulch heavily." },
+  "Clematis": { bloomMonths: [5,6,7,8,9], zone: "4-9", sun: "Full Sun", water: "Moderate", tip: "Roots like shade, tops like sun. Mulch base heavily." },
+  "Hibiscus": { bloomMonths: [6,7,8,9,10], zone: "5-11", sun: "Full Sun", water: "High", tip: "Tropical varieties need winter protection. Prune in early spring." },
+  "Gardenia": { bloomMonths: [5,6,7,8], zone: "8-11", sun: "Partial Sun", water: "Moderate", tip: "Acidic soil essential. Intensely fragrant white blooms." },
+  "Magnolia": { bloomMonths: [3,4,5], zone: "5-9", sun: "Full/Partial Sun", water: "Moderate", tip: "Avoid transplanting. Blooms before leaves emerge in spring." },
+  "Plum Tree": { bloomMonths: [2,3,4], zone: "4-9", sun: "Full Sun", water: "Moderate", tip: "Beautiful early spring blossoms. Many varieties popular in Japan (ume)." },
+  "Camellia Sasanqua": { bloomMonths: [10,11,12], zone: "7-9", sun: "Partial Sun", water: "Moderate", tip: "Fall/winter bloomer. More sun-tolerant than C. japonica." },
+  "Custom": { bloomMonths: [], zone: "Varies", sun: "Varies", water: "Varies", tip: "Add your own custom plant variety." },
+};
+
+const PLANT_NAMES = Object.keys(BLOOM_DATA);
+
+const SECTION_COLORS = {
+  "Section A": { bg: "#2d5a27", light: "#e8f5e3", accent: "#4a8c3f", badge: "#c8e6c0" },
+  "Section B": { bg: "#1a4a6e", light: "#e0f0fa", accent: "#3a7cb8", badge: "#b8d9f0" },
+  "Section C": { bg: "#7a4a1a", light: "#faf0e0", accent: "#b87a3a", badge: "#f0d9b0" },
+  "Section D": { bg: "#5a1a5a", light: "#f5e0f5", accent: "#8c3f8c", badge: "#e0b8e0" },
+};
+
+function getSeason(month) {
+  if (month >= 3 && month <= 5) return "spring";
+  if (month >= 6 && month <= 8) return "summer";
+  if (month >= 9 && month <= 11) return "autumn";
+  return "winter";
+}
+const SEASON_ICONS = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
+
+function getBloomStatus(plantName, currentMonth) {
+  const data = BLOOM_DATA[plantName];
+  if (!data || !data.bloomMonths.length) return "unknown";
+  if (data.bloomMonths.includes(currentMonth + 1)) return "blooming";
+  const nextBloom = data.bloomMonths.find(m => m > currentMonth + 1) || data.bloomMonths[0];
+  const diff = nextBloom > currentMonth + 1 ? nextBloom - (currentMonth + 1) : 12 - (currentMonth + 1) + nextBloom;
+  if (diff <= 2) return "upcoming";
+  return "dormant";
+}
+
+const STATUS_STYLES = {
+  blooming: { color: "#2d7a2d", bg: "#d4f5d0", icon: "🌸", label: "Blooming Now" },
+  upcoming: { color: "#8a6d00", bg: "#fff8d0", icon: "🌿", label: "Bloom Soon" },
+  dormant: { color: "#666", bg: "#eee", icon: "💤", label: "Dormant" },
+  unknown: { color: "#999", bg: "#f5f5f5", icon: "❓", label: "Unknown" },
+};
+
+// Setup banner component
+function SetupBanner() {
+  const [show, setShow] = useState(true);
+  if (!show) return null;
+  return (
+    <div style={{ background:"#fff8e0", border:"1px solid #f0d860", borderRadius:12, padding:"16px 20px", marginBottom:20, position:"relative" }}>
+      <button onClick={() => setShow(false)} style={{ position:"absolute", top:8, right:12, background:"none", border:"none", fontSize:18, cursor:"pointer", color:"#999" }}>×</button>
+      <div style={{ fontWeight:700, fontSize:14, color:"#8a6d00", marginBottom:6 }}>⚙️ Setup Required — JSONBin API Key</div>
+      <div style={{ fontSize:13, color:"#6b5500", lineHeight:1.6 }}>
+        To enable shared data between devices:<br/>
+        1. Go to <a href="https://jsonbin.io" target="_blank" rel="noopener" style={{ color:"#2d5a27", fontWeight:600 }}>jsonbin.io</a> and create a free account<br/>
+        2. Copy your <strong>X-Master-Key</strong> from the API Keys page<br/>
+        3. Open <code style={{ background:"#f0ede5", padding:"1px 6px", borderRadius:4 }}>src/storage.js</code> and paste it in the API_KEY field<br/>
+        4. Rebuild and deploy<br/>
+        <em style={{ fontSize:12, color:"#999" }}>Until configured, data saves locally in this browser only.</em>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [view, setView] = useState("dashboard");
+  const [plants, setPlants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedSection, setSelectedSection] = useState("All");
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState({
+    name: "", section: "Section A", datePlanted: "", notes: "", customName: ""
+  });
+  const [toast, setToast] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const configured = isConfigured();
+  const currentMonth = new Date().getMonth();
+
+  // Load plants on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        if (configured) {
+          const data = await loadPlants();
+          setPlants(data);
+        } else {
+          const local = localStorage.getItem('garden-plants-local');
+          if (local) setPlants(JSON.parse(local));
+        }
+      } catch (e) {
+        console.error("Load failed", e);
+        const local = localStorage.getItem('garden-plants-local');
+        if (local) setPlants(JSON.parse(local));
+      }
+      setLoading(false);
+    })();
+  }, [configured]);
+
+  const saveAll = useCallback(async (updated) => {
+    setPlants(updated);
+    localStorage.setItem('garden-plants-local', JSON.stringify(updated));
+    if (configured) {
+      setSyncing(true);
+      try {
+        await savePlants(updated);
+      } catch (e) {
+        console.error("Sync failed", e);
+      }
+      setSyncing(false);
+    }
+  }, [configured]);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const handleSave = () => {
+    const plantName = formData.name === "Custom" ? (formData.customName || "Custom Plant") : formData.name;
+    if (!plantName || !formData.datePlanted) {
+      showToast("Please fill in plant name and date planted.");
+      return;
+    }
+    const entry = {
+      id: editingId || Date.now().toString(),
+      name: plantName,
+      section: formData.section,
+      datePlanted: formData.datePlanted,
+      notes: formData.notes,
+      bloomInfo: BLOOM_DATA[formData.name] || BLOOM_DATA["Custom"],
+    };
+    let updated;
+    if (editingId) {
+      updated = plants.map(p => p.id === editingId ? entry : p);
+    } else {
+      updated = [...plants, entry];
+    }
+    saveAll(updated);
+    setShowForm(false);
+    setEditingId(null);
+    setFormData({ name: "", section: "Section A", datePlanted: "", notes: "", customName: "" });
+    showToast(editingId ? "Plant updated!" : "Plant added!");
+  };
+
+  const handleEdit = (plant) => {
+    const isKnown = PLANT_NAMES.includes(plant.name);
+    setFormData({
+      name: isKnown ? plant.name : "Custom",
+      customName: isKnown ? "" : plant.name,
+      section: plant.section,
+      datePlanted: plant.datePlanted,
+      notes: plant.notes,
+    });
+    setEditingId(plant.id);
+    setShowForm(true);
+    setView("manage");
+  };
+
+  const handleDelete = (id) => {
+    saveAll(plants.filter(p => p.id !== id));
+    setDeleteConfirm(null);
+    showToast("Plant removed.");
+  };
+
+  const filteredPlants = useMemo(() => {
+    return plants.filter(p => {
+      const d = new Date(p.datePlanted);
+      const yearMatch = d.getFullYear() === selectedYear;
+      const sectionMatch = selectedSection === "All" || p.section === selectedSection;
+      return yearMatch && sectionMatch;
+    });
+  }, [plants, selectedYear, selectedSection]);
+
+  const monthPlants = useMemo(() => {
+    return filteredPlants.filter(p => new Date(p.datePlanted).getMonth() === selectedMonth);
+  }, [filteredPlants, selectedMonth]);
+
+  const years = useMemo(() => {
+    const yrs = new Set(plants.map(p => new Date(p.datePlanted).getFullYear()));
+    yrs.add(new Date().getFullYear());
+    return [...yrs].sort((a,b) => b - a);
+  }, [plants]);
+
+  const stats = useMemo(() => {
+    const bySection = {};
+    SECTIONS.forEach(s => bySection[s] = filteredPlants.filter(p => p.section === s).length);
+    const byMonth = {};
+    MONTHS.forEach((m,i) => byMonth[i] = filteredPlants.filter(p => new Date(p.datePlanted).getMonth() === i).length);
+    const bloomingNow = filteredPlants.filter(p => getBloomStatus(p.name, currentMonth) === "blooming").length;
+    const upcomingSoon = filteredPlants.filter(p => getBloomStatus(p.name, currentMonth) === "upcoming").length;
+    return { bySection, byMonth, bloomingNow, upcomingSoon, total: filteredPlants.length };
+  }, [filteredPlants, currentMonth]);
+
+  const maxMonthCount = Math.max(1, ...Object.values(stats.byMonth));
+
+  if (loading) return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", fontFamily:"'Playfair Display', Georgia, serif", fontSize:24, color:"#4a6741", background:"#f8faf5" }}>
+      <div style={{ textAlign:"center" }}>
+        <div style={{ fontSize:48, marginBottom:16 }}>🌿</div>
+        Loading your garden...
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ fontFamily:"'DM Sans', 'Segoe UI', sans-serif", background:"#f5f3ee", minHeight:"100vh", color:"#2a2a2a" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+      {/* Header */}
+      <div style={{ background:"linear-gradient(135deg, #2d5a27 0%, #1a4a2e 50%, #0f3a22 100%)", padding:"28px 32px 20px", color:"white", position:"relative", overflow:"hidden" }}>
+        <div style={{ position:"absolute", top:0, left:0, right:0, bottom:0, opacity:0.06, backgroundImage:"repeating-linear-gradient(45deg, transparent, transparent 20px, rgba(255,255,255,0.1) 20px, rgba(255,255,255,0.1) 40px)" }} />
+        <div style={{ position:"relative", zIndex:1, maxWidth:1100, margin:"0 auto" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:16 }}>
+            <div>
+              <h1 style={{ fontFamily:"'Playfair Display', Georgia, serif", fontSize:30, fontWeight:700, margin:0, letterSpacing:"-0.5px" }}>
+                🌿 Garden Journal
+              </h1>
+              <p style={{ margin:"4px 0 0", fontSize:14, opacity:0.75, fontWeight:400 }}>
+                Track your plantings, seasons & blooms
+                {syncing && <span style={{ marginLeft:8, fontSize:12, opacity:0.6 }}>⟳ syncing...</span>}
+                {configured && !syncing && <span style={{ marginLeft:8, fontSize:12, opacity:0.6 }}>☁️ shared</span>}
+              </p>
+            </div>
+            <div style={{ display:"flex", gap:4, background:"rgba(255,255,255,0.12)", borderRadius:10, padding:4 }}>
+              {["dashboard","manage"].map(v => (
+                <button key={v} onClick={() => { setView(v); setShowForm(false); }}
+                  style={{ padding:"9px 22px", border:"none", borderRadius:8, cursor:"pointer", fontWeight:600, fontSize:13, fontFamily:"inherit", transition:"all 0.2s",
+                    background: view === v ? "white" : "transparent",
+                    color: view === v ? "#2d5a27" : "rgba(255,255,255,0.85)",
+                    boxShadow: view === v ? "0 2px 8px rgba(0,0,0,0.15)" : "none"
+                  }}>
+                  {v === "dashboard" ? "📊 Dashboard" : "🌱 Manage Plants"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:1100, margin:"0 auto", padding:"24px 24px 40px" }}>
+
+        {/* Setup banner if not configured */}
+        {!configured && <SetupBanner />}
+
+        {/* Filters */}
+        <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap", alignItems:"center" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:"white", padding:"8px 14px", borderRadius:10, border:"1px solid #e0ddd5", boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
+            <span style={{ fontSize:13, fontWeight:600, color:"#888" }}>Year</span>
+            <select value={selectedYear} onChange={e => setSelectedYear(+e.target.value)}
+              style={{ border:"none", background:"transparent", fontFamily:"inherit", fontSize:15, fontWeight:600, color:"#2d5a27", cursor:"pointer", outline:"none" }}>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:"white", padding:"8px 14px", borderRadius:10, border:"1px solid #e0ddd5", boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
+            <span style={{ fontSize:13, fontWeight:600, color:"#888" }}>Section</span>
+            <select value={selectedSection} onChange={e => setSelectedSection(e.target.value)}
+              style={{ border:"none", background:"transparent", fontFamily:"inherit", fontSize:15, fontWeight:600, color:"#2d5a27", cursor:"pointer", outline:"none" }}>
+              <option value="All">All Sections</option>
+              {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          {view === "manage" && (
+            <button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ name:"", section:"Section A", datePlanted:"", notes:"", customName:"" }); }}
+              style={{ marginLeft:"auto", padding:"10px 20px", background:"#2d5a27", color:"white", border:"none", borderRadius:10, cursor:"pointer", fontWeight:600, fontSize:14, fontFamily:"inherit", boxShadow:"0 2px 8px rgba(45,90,39,0.3)" }}>
+              + Add Plant
+            </button>
+          )}
+        </div>
+
+        {/* ===== DASHBOARD VIEW ===== */}
+        {view === "dashboard" && (
+          <div>
+            {/* Summary Cards */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:14, marginBottom:28 }}>
+              {[
+                { label:"Total Plants", value: stats.total, icon:"🌱", color:"#2d5a27" },
+                { label:"Blooming Now", value: stats.bloomingNow, icon:"🌸", color:"#c44569" },
+                { label:"Bloom Soon", value: stats.upcomingSoon, icon:"🌿", color:"#8a6d00" },
+                { label:"Season", value: SEASON_ICONS[getSeason(currentMonth)], icon: "", color:"#4a6741", sub: getSeason(currentMonth).charAt(0).toUpperCase() + getSeason(currentMonth).slice(1) },
+              ].map((c, i) => (
+                <div key={i} style={{ background:"white", borderRadius:14, padding:"20px 18px", border:"1px solid #e8e5dd", boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:"#999", textTransform:"uppercase", letterSpacing:"0.5px" }}>{c.label}</div>
+                  <div style={{ fontSize: c.sub ? 32 : 28, fontWeight:700, color: c.color, fontFamily:"'Playfair Display', serif", marginTop:4 }}>
+                    {c.icon && <span style={{ marginRight:4 }}>{c.icon}</span>}{c.value}
+                  </div>
+                  {c.sub && <div style={{ fontSize:13, color:"#888", marginTop:2 }}>{c.sub}</div>}
+                </div>
+              ))}
+            </div>
+
+            {/* Monthly Activity Chart */}
+            <div style={{ background:"white", borderRadius:16, padding:"24px", border:"1px solid #e8e5dd", marginBottom:24, boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
+              <h3 style={{ fontFamily:"'Playfair Display', serif", fontSize:18, margin:"0 0 18px", color:"#2d5a27" }}>
+                Monthly Planting Activity — {selectedYear}
+              </h3>
+              <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:120 }}>
+                {MONTHS.map((m, i) => {
+                  const count = stats.byMonth[i] || 0;
+                  const h = count ? Math.max(12, (count / maxMonthCount) * 100) : 4;
+                  const isCurrentMonth = i === currentMonth && selectedYear === new Date().getFullYear();
+                  return (
+                    <div key={m} style={{ flex:1, textAlign:"center", cursor:"pointer" }} onClick={() => setSelectedMonth(i)}>
+                      <div style={{ fontSize:11, fontWeight:600, color: count ? "#2d5a27" : "#ccc", marginBottom:4 }}>{count || ""}</div>
+                      <div style={{
+                        height: h, borderRadius:"6px 6px 4px 4px", transition:"all 0.3s",
+                        background: isCurrentMonth ? "linear-gradient(180deg, #4a8c3f, #2d5a27)" : count ? "linear-gradient(180deg, #a8d5a0, #6bb863)" : "#eee",
+                        border: isCurrentMonth ? "2px solid #1a3a15" : "none",
+                        boxShadow: count ? "0 2px 4px rgba(0,0,0,0.1)" : "none",
+                      }} />
+                      <div style={{ fontSize:11, marginTop:6, fontWeight: isCurrentMonth ? 700 : 500, color: isCurrentMonth ? "#2d5a27" : "#888" }}>{m}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section Overview */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:16, marginBottom:24 }}>
+              {SECTIONS.map(section => {
+                const sc = SECTION_COLORS[section];
+                const sectionPlants = filteredPlants.filter(p => p.section === section);
+                return (
+                  <div key={section} style={{ background:"white", borderRadius:14, overflow:"hidden", border:"1px solid #e8e5dd", boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
+                    <div style={{ background: sc.bg, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ color:"white", fontWeight:700, fontFamily:"'Playfair Display', serif", fontSize:16 }}>{section}</span>
+                      <span style={{ background:"rgba(255,255,255,0.25)", color:"white", padding:"3px 10px", borderRadius:20, fontSize:12, fontWeight:600 }}>
+                        {sectionPlants.length} plant{sectionPlants.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div style={{ padding:"14px 18px", minHeight:60 }}>
+                      {sectionPlants.length === 0 ? (
+                        <p style={{ color:"#bbb", fontSize:13, fontStyle:"italic", margin:0 }}>No plants in {selectedYear}</p>
+                      ) : (
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                          {sectionPlants.map(p => {
+                            const status = getBloomStatus(p.name, currentMonth);
+                            const s = STATUS_STYLES[status];
+                            return (
+                              <span key={p.id} onClick={() => handleEdit(p)}
+                                style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"4px 10px", borderRadius:20, fontSize:12, fontWeight:500, cursor:"pointer",
+                                  background: s.bg, color: s.color, border:`1px solid ${s.color}22`, transition:"all 0.2s" }}>
+                                {s.icon} {p.name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Month Detail */}
+            <div style={{ background:"white", borderRadius:16, padding:"24px", border:"1px solid #e8e5dd", boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
+                <h3 style={{ fontFamily:"'Playfair Display', serif", fontSize:18, margin:0, color:"#2d5a27" }}>
+                  {SEASON_ICONS[getSeason(selectedMonth)]} {FULL_MONTHS[selectedMonth]} {selectedYear} Detail
+                </h3>
+                <div style={{ display:"flex", gap:4 }}>
+                  <button onClick={() => setSelectedMonth((selectedMonth - 1 + 12) % 12)} style={{ border:"1px solid #ddd", background:"white", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontFamily:"inherit", fontSize:14 }}>←</button>
+                  <button onClick={() => setSelectedMonth((selectedMonth + 1) % 12)} style={{ border:"1px solid #ddd", background:"white", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontFamily:"inherit", fontSize:14 }}>→</button>
+                </div>
+              </div>
+
+              {/* Blooming this month */}
+              {(() => {
+                const bloomingThisMonth = filteredPlants.filter(p => {
+                  const info = BLOOM_DATA[p.name] || p.bloomInfo;
+                  return info && info.bloomMonths && info.bloomMonths.includes(selectedMonth + 1);
+                });
+                return bloomingThisMonth.length > 0 && (
+                  <div style={{ marginBottom:18, padding:"12px 16px", background:"#fdf8f0", borderRadius:10, border:"1px solid #f0e6d4" }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:"#8a6d00", marginBottom:8 }}>🌸 Expected to bloom in {FULL_MONTHS[selectedMonth]}:</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                      {bloomingThisMonth.map(p => (
+                        <span key={p.id} style={{ padding:"4px 10px", background:"#fff8d0", color:"#6b5500", borderRadius:16, fontSize:12, fontWeight:500, border:"1px solid #f0e0a0" }}>
+                          🌸 {p.name} ({p.section})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {monthPlants.length === 0 ? (
+                <p style={{ color:"#bbb", fontSize:14, textAlign:"center", padding:20, fontStyle:"italic" }}>
+                  No plants were planted in {FULL_MONTHS[selectedMonth]} {selectedYear}
+                </p>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {monthPlants.map(p => {
+                    const status = getBloomStatus(p.name, currentMonth);
+                    const s = STATUS_STYLES[status];
+                    const info = BLOOM_DATA[p.name] || p.bloomInfo;
+                    const sc = SECTION_COLORS[p.section];
+                    return (
+                      <div key={p.id} style={{ display:"flex", gap:14, padding:"14px 16px", borderRadius:12, background:"#fafaf7", border:"1px solid #eee", alignItems:"flex-start" }}>
+                        <div style={{ minWidth:36, height:36, borderRadius:10, background: sc.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:"white", flexShrink:0 }}>
+                          {s.icon}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                            <span style={{ fontWeight:600, fontSize:15 }}>{p.name}</span>
+                            <span style={{ padding:"2px 8px", borderRadius:12, fontSize:11, fontWeight:600, background: sc.badge, color: sc.bg }}>{p.section}</span>
+                            <span style={{ padding:"2px 8px", borderRadius:12, fontSize:11, fontWeight:500, background: s.bg, color: s.color }}>{s.label}</span>
+                          </div>
+                          <div style={{ fontSize:12, color:"#888", marginTop:4 }}>
+                            Planted: {new Date(p.datePlanted).toLocaleDateString("en-US", { month:"long", day:"numeric", year:"numeric" })}
+                            {info && info.zone !== "Varies" && <> · Zone {info.zone} · {info.sun} · Water: {info.water}</>}
+                          </div>
+                          {info && info.tip && info.tip !== BLOOM_DATA["Custom"].tip && (
+                            <div style={{ fontSize:12, color:"#6b8a60", marginTop:4, fontStyle:"italic" }}>💡 {info.tip}</div>
+                          )}
+                          {p.notes && <div style={{ fontSize:12, color:"#666", marginTop:4 }}>📝 {p.notes}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ===== MANAGE VIEW ===== */}
+        {view === "manage" && (
+          <div>
+            {/* Add/Edit Form */}
+            {showForm && (
+              <div style={{ background:"white", borderRadius:16, padding:"28px", border:"1px solid #e0ddd5", marginBottom:24, boxShadow:"0 4px 16px rgba(0,0,0,0.06)" }}>
+                <h3 style={{ fontFamily:"'Playfair Display', serif", fontSize:20, margin:"0 0 20px", color:"#2d5a27" }}>
+                  {editingId ? "✏️ Edit Plant" : "🌱 Add New Plant"}
+                </h3>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:16 }}>
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.5px" }}>Plant Name</label>
+                    <select value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
+                      style={{ width:"100%", padding:"10px 12px", border:"1px solid #ddd", borderRadius:10, fontFamily:"inherit", fontSize:14, background:"#fafaf7", boxSizing:"border-box" }}>
+                      <option value="">Select a plant...</option>
+                      {PLANT_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  {formData.name === "Custom" && (
+                    <div>
+                      <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.5px" }}>Custom Name</label>
+                      <input type="text" value={formData.customName} onChange={e => setFormData({...formData, customName: e.target.value})}
+                        placeholder="Enter plant name..." style={{ width:"100%", padding:"10px 12px", border:"1px solid #ddd", borderRadius:10, fontFamily:"inherit", fontSize:14, background:"#fafaf7", boxSizing:"border-box" }} />
+                    </div>
+                  )}
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.5px" }}>Section</label>
+                    <select value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})}
+                      style={{ width:"100%", padding:"10px 12px", border:"1px solid #ddd", borderRadius:10, fontFamily:"inherit", fontSize:14, background:"#fafaf7", boxSizing:"border-box" }}>
+                      {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.5px" }}>Date Planted</label>
+                    <input type="date" value={formData.datePlanted} onChange={e => setFormData({...formData, datePlanted: e.target.value})}
+                      style={{ width:"100%", padding:"10px 12px", border:"1px solid #ddd", borderRadius:10, fontFamily:"inherit", fontSize:14, background:"#fafaf7", boxSizing:"border-box" }} />
+                  </div>
+                  <div style={{ gridColumn:"1 / -1" }}>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.5px" }}>Notes</label>
+                    <input type="text" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}
+                      placeholder="Any notes about this planting..." style={{ width:"100%", padding:"10px 12px", border:"1px solid #ddd", borderRadius:10, fontFamily:"inherit", fontSize:14, background:"#fafaf7", boxSizing:"border-box" }} />
+                  </div>
+                </div>
+
+                {/* Bloom info preview */}
+                {formData.name && formData.name !== "Custom" && BLOOM_DATA[formData.name] && (
+                  <div style={{ marginTop:16, padding:"14px 16px", background:"#f0f8ed", borderRadius:10, border:"1px solid #d4e8cd" }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:"#2d5a27", marginBottom:8 }}>📖 Bloom Information</div>
+                    <div style={{ display:"flex", gap:16, flexWrap:"wrap", fontSize:13, color:"#4a6741" }}>
+                      <span>🌡 Zone: {BLOOM_DATA[formData.name].zone}</span>
+                      <span>☀️ {BLOOM_DATA[formData.name].sun}</span>
+                      <span>💧 Water: {BLOOM_DATA[formData.name].water}</span>
+                    </div>
+                    <div style={{ display:"flex", gap:3, marginTop:10 }}>
+                      {MONTHS.map((m, i) => {
+                        const blooms = BLOOM_DATA[formData.name].bloomMonths.includes(i + 1);
+                        return (
+                          <div key={m} style={{ flex:1, textAlign:"center" }}>
+                            <div style={{ height:18, borderRadius:4, background: blooms ? "#4a8c3f" : "#e8e5dd", transition:"all 0.3s" }} />
+                            <div style={{ fontSize:9, marginTop:3, color: blooms ? "#2d5a27" : "#bbb", fontWeight: blooms ? 700 : 400 }}>{m}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize:12, color:"#6b8a60", marginTop:10, fontStyle:"italic" }}>💡 {BLOOM_DATA[formData.name].tip}</div>
+                  </div>
+                )}
+
+                <div style={{ display:"flex", gap:10, marginTop:20 }}>
+                  <button onClick={handleSave}
+                    style={{ padding:"10px 24px", background:"#2d5a27", color:"white", border:"none", borderRadius:10, cursor:"pointer", fontWeight:600, fontSize:14, fontFamily:"inherit", boxShadow:"0 2px 8px rgba(45,90,39,0.3)" }}>
+                    {editingId ? "Update Plant" : "Save Plant"}
+                  </button>
+                  <button onClick={() => { setShowForm(false); setEditingId(null); }}
+                    style={{ padding:"10px 24px", background:"#f0ede5", color:"#666", border:"none", borderRadius:10, cursor:"pointer", fontWeight:600, fontSize:14, fontFamily:"inherit" }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Plant List */}
+            <div style={{ background:"white", borderRadius:16, padding:"24px", border:"1px solid #e0ddd5", boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
+              <h3 style={{ fontFamily:"'Playfair Display', serif", fontSize:18, margin:"0 0 18px", color:"#2d5a27" }}>
+                🌱 All Plants — {selectedYear} {selectedSection !== "All" ? `· ${selectedSection}` : ""}
+              </h3>
+              {filteredPlants.length === 0 ? (
+                <div style={{ textAlign:"center", padding:"40px 20px", color:"#bbb" }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>🌱</div>
+                  <p style={{ fontSize:15, fontWeight:500 }}>No plants recorded yet</p>
+                  <p style={{ fontSize:13 }}>Click "+ Add Plant" to start tracking your garden</p>
+                </div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {filteredPlants.sort((a,b) => new Date(a.datePlanted) - new Date(b.datePlanted)).map(p => {
+                    const status = getBloomStatus(p.name, currentMonth);
+                    const s = STATUS_STYLES[status];
+                    const sc = SECTION_COLORS[p.section];
+                    const info = BLOOM_DATA[p.name] || p.bloomInfo;
+                    return (
+                      <div key={p.id} style={{ display:"flex", gap:14, padding:"14px 16px", borderRadius:12, background:"#fafaf7", border:"1px solid #eee", alignItems:"center", transition:"all 0.2s" }}>
+                        <div style={{ minWidth:40, height:40, borderRadius:10, background: sc.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>
+                          {s.icon}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                            <span style={{ fontWeight:600, fontSize:15 }}>{p.name}</span>
+                            <span style={{ padding:"2px 8px", borderRadius:12, fontSize:11, fontWeight:600, background: sc.badge, color: sc.bg }}>{p.section}</span>
+                            <span style={{ padding:"2px 8px", borderRadius:12, fontSize:11, fontWeight:500, background: s.bg, color: s.color }}>{s.label}</span>
+                          </div>
+                          <div style={{ fontSize:12, color:"#888", marginTop:3 }}>
+                            Planted {new Date(p.datePlanted).toLocaleDateString("en-US", { month:"long", day:"numeric", year:"numeric" })}
+                            {info && info.bloomMonths && info.bloomMonths.length > 0 && (
+                              <> · Blooms: {info.bloomMonths.map(m => MONTHS[m-1]).join(", ")}</>
+                            )}
+                          </div>
+                          {p.notes && <div style={{ fontSize:12, color:"#888", marginTop:2 }}>📝 {p.notes}</div>}
+                        </div>
+                        <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                          <button onClick={() => handleEdit(p)}
+                            style={{ padding:"7px 14px", background:"#f0ede5", border:"none", borderRadius:8, cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"inherit", color:"#666" }}>
+                            Edit
+                          </button>
+                          {deleteConfirm === p.id ? (
+                            <div style={{ display:"flex", gap:4 }}>
+                              <button onClick={() => handleDelete(p.id)}
+                                style={{ padding:"7px 12px", background:"#e74c3c", color:"white", border:"none", borderRadius:8, cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"inherit" }}>
+                                Confirm
+                              </button>
+                              <button onClick={() => setDeleteConfirm(null)}
+                                style={{ padding:"7px 12px", background:"#eee", border:"none", borderRadius:8, cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"inherit", color:"#666" }}>
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setDeleteConfirm(p.id)}
+                              style={{ padding:"7px 14px", background:"#fde8e8", border:"none", borderRadius:8, cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"inherit", color:"#c0392b" }}>
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Reset */}
+            {plants.length > 0 && (
+              <div style={{ marginTop:20, textAlign:"center" }}>
+                <button onClick={async () => {
+                  if (confirm("Are you sure you want to delete ALL plant data? This cannot be undone.")) {
+                    await saveAll([]);
+                    showToast("All data cleared.");
+                  }
+                }} style={{ padding:"8px 16px", background:"transparent", border:"1px solid #ddd", borderRadius:8, cursor:"pointer", fontSize:12, color:"#999", fontFamily:"inherit" }}>
+                  Reset All Data
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{ position:"fixed", bottom:28, left:"50%", transform:"translateX(-50%)", background:"#2d5a27", color:"white", padding:"12px 24px", borderRadius:12, fontSize:14, fontWeight:600, fontFamily:"inherit", boxShadow:"0 4px 20px rgba(0,0,0,0.2)", zIndex:1000 }}>
+          {toast}
+        </div>
+      )}
+
+      <style>{`
+        select:focus, input:focus { outline: 2px solid #4a8c3f; outline-offset: -1px; }
+        button:hover { opacity: 0.9; }
+        @media (max-width: 600px) {
+          h1 { font-size: 24px !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
